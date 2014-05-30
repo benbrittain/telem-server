@@ -2,8 +2,9 @@
 
 document = ''; // cheap hack
 var telem = require('./telemetry');
-
-var nodemailer = require("nodemailer");
+var jStat = require('../jstat');
+var mail = require("nodemailer").mail;
+//var nodemailer = require("nodemailer");
 var zlib = require('zlib');
 var url = require('url');
 var http = require('https');
@@ -204,6 +205,20 @@ var tTest = function(sample, data){
   return t;
 }
 
+var sendAlert = function(measure, nDays, branch, startDay) {
+  console.log('alert!');
+  var body = "" + startDay.toDateString() + " (most recent data point) is ";
+  body = body + "significantly different compared to the last " + nDays + " ";
+  body = body + "days on " + branch + " for " + measure + "\n";
+  mail({
+    from: "Telemetry Server <alert@mozilla.com>", // sender address
+    to: "ben@brittain.org", // list of receivers
+    subject: "Potential Regression for " + measure, // Subject line
+    text: body,
+  });
+
+}
+
 var main = function() {
   if (process.argv.length == 5) {
     var measure = process.argv[2];
@@ -231,11 +246,16 @@ var main = function() {
     getMostRecentDay(measure, branch, function(startDay, sample) {
       console.log('Most recent day: ' + startDay);
       getStats(measure, startDay, nDays, branch, function(data) {
-        var tVal = tTest(sample, data);
-        console.log(tVal);
-//    var pVal = tPest(...);
-//    if (significant(tVal)){
-//      sendAlert(measure, nDays, branch, mostRecentPoint);
+        console.log('sample: ' + sample);
+        var mean = sampleMean(data);
+        console.log('mean: ' + mean);
+        var stddev = stdDev(data);
+        console.log('stddev: ' + stddev);
+        var pVal =  jStat.jStat.ttest( sample, mean, stddev, data.length, 1);
+        console.log(pVal);
+        if (pVal <= 0.05){
+          sendAlert(measure, nDays, branch, startDay);
+        }
       });
     });
 
